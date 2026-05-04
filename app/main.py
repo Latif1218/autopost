@@ -6,7 +6,7 @@ from .database import Base, engine, get_db   # check_database_health সরা�
 from .routers import register_user, login_user, forgot_password
 # অন্য routers যোগ করো (পরে)
 # from .routers import business_onboarding_router, subscription ইত্যাদি
-
+from app.models import *
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
