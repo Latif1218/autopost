@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 from .database import Base, engine, get_db   # check_database_health সরানো হয়েছে
-from .routers import register_user, login_user, forgot_password
+from .routers import register_user, login_user, forgot_password, subscription
 # অন্য routers যোগ করো (পরে)
 # from .routers import business_onboarding_router, subscription ইত্যাদি
 from app.models import *
@@ -69,7 +69,7 @@ app.add_middleware(
 app.add_middleware(
     SessionMiddleware,
     secret_key=SESSION_SECRET_KEY,
-    https_only=False,      # Development এ False রাখো, Production এ True করো
+    https_only=False,      
     same_site="lax"
 )
 
@@ -87,7 +87,8 @@ def health():
 app.include_router(register_user.router)
 app.include_router(login_user.router)
 app.include_router(forgot_password.router)
+app.include_router(subscription.router)
 # app.include_router(business_onboarding_router.router)   # পরে uncomment করো
-# app.include_router(subscription.router)  # পরে
+
 
 print("✅ FastAPI app initialized with Supabase")

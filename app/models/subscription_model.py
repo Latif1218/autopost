@@ -1,3 +1,5 @@
+# app/models/subscription_model.py
+
 from sqlalchemy import Column, String, Enum, DateTime, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -7,13 +9,11 @@ from sqlalchemy.dialects.postgresql import UUID
 import uuid
 
 
-
 class PlanType(str, PyEnum):
     ESSENTIAL = "essential"
     STARTER = "starter"
     PRO = "pro"
     PREMIUM = "premium"
-    
 
 
 class SubscriptionStatus(str, PyEnum):
@@ -32,9 +32,9 @@ class Subscription(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     stripe_subscription_id = Column(String, nullable=True, index=True)
     stripe_customer_id = Column(String, nullable=True, index=True)
-    plan_type = Column(Enum(PlanType), nullable=False, default=PlanType.ESSENTIAL)
+    plan_type = Column(String, nullable=False, default="essential")
     price_id = Column(String, nullable=True)
-    status = Column(Enum(SubscriptionStatus), nullable=False, default=SubscriptionStatus.INACTIVE)
+    status = Column(String, nullable=False, default="inactive")
     current_period_start = Column(DateTime, nullable=True)
     current_period_end = Column(DateTime, nullable=True)
     trial_start = Column(DateTime, nullable=True)

@@ -8,11 +8,13 @@ class CreateCheckoutRequest(BaseModel):
     is_one_time: bool = Field(False, description="True only for premium")
 
 
+
 class CheckoutResponse(BaseModel):
     session_id: str
     url: str
     plan: str
     is_one_time: bool
+
 
 
 class SubscriptionStatusResponse(BaseModel):
@@ -21,3 +23,12 @@ class SubscriptionStatusResponse(BaseModel):
     current_period_end: Optional[datetime]
     cancel_at_period_end: bool
     message: str
+
+
+
+class PlanConfigItem(BaseModel):
+    price: float
+    currency: str
+    note: Optional[str] = None
+    price_id: Optional[str] = None
+    interval: Optional[str] = None

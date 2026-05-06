@@ -9,8 +9,23 @@ SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+
+MAILERLITE_API_KEY = os.getenv("MAILERLITE_API_KEY")
+
+
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+STRIPE_PUBLISHABLE_KEY=os.getenv("STRIPE_PUBLISHABLE_KEY")
+STRIPE_SUCCESS_URL = os.getenv("STRIPE_SUCCESS_URL")
+STRIPE_CANCEL_URL = os.getenv("STRIPE_CANCEL_URL")
+
+
+PRICE_IDS = {
+    "starter": os.getenv("PRICE_STARTER_MONTHLY"),
+    "pro": os.getenv("PRICE_PRO_MONTHLY"),
+    "premium": os.getenv("PRICE_PREMIUM_ONETIME"),
+}
+
 
 if not SUPABASE_URL or not SUPABASE_ANON_KEY or not SUPABASE_SERVICE_KEY:
     print("Warning: Some Supabase credentials are missing in .env")
