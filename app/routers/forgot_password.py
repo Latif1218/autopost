@@ -7,10 +7,13 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from datetime import datetime
 from ..database import get_db
-from ..supabase_client import supabase_admin
+from ..supabase_client import supabase_admin, supabase_anon
 from ..models.users_models import User
+from ..schemas.forgot_password_schema import ForgotPasswoedRequest, PasswordUpdate, PasswordResetRequest
 from ..authentication.users_oauth import get_current_user
 from pydantic import BaseModel, EmailStr, Field
+
+from app import supabase_client
 
 router = APIRouter(
     prefix="/forgot",
@@ -20,25 +23,17 @@ router = APIRouter(
 limiter = Limiter(key_func=get_remote_address)
 
 
-class ForgotRequest(BaseModel):
-    email: EmailStr
-
-
-class PasswordUpdate(BaseModel):
-    new_password: str = Field(..., min_length=8, max_length=128)
-
-
 @router.post("/forgot_pass", status_code=status.HTTP_200_OK)
 @limiter.limit("3/hour")
 def forgot_password(
     request: Request,
-    payload: ForgotRequest
+    payload: ForgotPasswoedRequest
 ):
     try:
-        supabase_admin.auth.reset_password_email(
+        supabase_anon.auth.reset_password_email(
             payload.email,
             options={
-                "redirect_to": "https://yourdomain.com/reset-password"
+                "redirect_to": "http://localhost:8000/reset-password"
             }
         )
     except Exception:
@@ -50,6 +45,42 @@ def forgot_password(
     }
 
 
+
+@router.put("/reset-password", status_code=status.HTTP_200_OK)
+async def reset_password_with_token(
+    payload: PasswordResetRequest
+):
+    try:
+        if payload.refresh_token:
+            supabase_anon.auth.set_session(
+                access_token=payload.access_token,
+                refresh_token=payload.refresh_token
+            )
+        else:
+            supabase_anon.auth.verify_otp(
+                token=payload.access_token,
+                type="recovery"
+            )
+
+        supabase_anon.auth.update_user(
+            attributes={"password": payload.new_password}
+        )
+
+        return {
+            "status": "success",
+            "message": "Password reset successfully."
+        }
+
+    except Exception as e:
+        print("Reset Password Error:", str(e))  
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset link. Please request a new one."
+        )
+
+
+
+
 @router.put("/update_password", status_code=status.HTTP_200_OK)
 def update_password(
     payload: PasswordUpdate,
@@ -57,9 +88,8 @@ def update_password(
     db: Annotated[Session, Depends(get_db)]
 ):
     try:
-        supabase_admin.auth.admin.update_user_by_id(
-            current_user.supabase_uid,
-            {"password": payload.new_password}
+        supabase_anon.auth.update_user(
+            attributes={"password": payload.new_password}
         )
     except Exception:
         raise HTTPException(
