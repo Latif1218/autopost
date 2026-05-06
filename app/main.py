@@ -88,7 +88,6 @@ app.include_router(register_user.router)
 app.include_router(login_user.router)
 app.include_router(forgot_password.router)
 app.include_router(subscription.router)
-# app.include_router(business_onboarding_router.router)   # পরে uncomment করো
 
 
 print("✅ FastAPI app initialized with Supabase")
