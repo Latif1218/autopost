@@ -3,9 +3,9 @@ from contextlib import asynccontextmanager
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 from .database import Base, engine, get_db   # check_database_health সরানো হয়েছে
-from .routers import register_user, login_user, forgot_password, subscription, business_onboarding_router
+from .routers import register_user, login_user, forgot_password, subscription, business_onboarding_router, social_auth
 # অন্য routers যোগ করো (পরে)
-# from .routers import business_onboarding_router, subscription ইত্যাদি
+# from .routers import business_onboarding_router, subscription, business_onboarding_router, social_auth ইত্যাদি
 from app.models import *
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -89,6 +89,7 @@ app.include_router(login_user.router)
 app.include_router(forgot_password.router)
 app.include_router(subscription.router)
 app.include_router(business_onboarding_router.router)
+app.include_router(social_auth.router)
 
 
 print("✅ FastAPI app initialized with Supabase")

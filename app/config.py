@@ -32,4 +32,7 @@ if not SUPABASE_URL or not SUPABASE_ANON_KEY or not SUPABASE_SERVICE_KEY:
 
 SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY")
 
+UPLOADPOST_API_KEY = os.getenv("UPLOADPOST_API_KEY")
+N8N_WEBHOOK_BASE = os.getenv("N8N_WEBHOOK_BASE")
+
 EMAIL_REGEX = r"^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"
