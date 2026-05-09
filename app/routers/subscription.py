@@ -390,3 +390,4 @@ async def stripe_webhook(
             logger.info(f"Subscription renewed: {sub_id}")
 
     return {"status": "success"}
+

@@ -41,6 +41,11 @@ def check_database_health():
 
 app = FastAPI(lifespan=lifespan, title="Ottomax API")
 
+
+@app.get("/dashboard")
+def dashboard():
+    return {"status": "API running"}
+
 # Rate Limiter
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
