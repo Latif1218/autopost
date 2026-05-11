@@ -52,7 +52,8 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
             "email": user.email,
             "password": user.password,
             "options": {
-                "data": {"full_name": user.full_name}
+                "data": {"full_name": user.full_name},
+                "email_redirect_to": "http://localhost:3000/callback"
             }
         })
         supabase_user = result.user
