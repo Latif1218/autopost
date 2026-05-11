@@ -46,3 +46,4 @@ class User(Base):
 
     businesses = relationship("Business", back_populates="user")
     subscription = relationship("Subscription", back_populates="user", uselist=False)
+    social_connections = relationship( "SocialConnection", back_populates="user", cascade="all, delete")

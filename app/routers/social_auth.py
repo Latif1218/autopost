@@ -6,9 +6,12 @@ from typing import Annotated, Optional, List
 from pydantic import BaseModel
 from ..authentication.users_oauth import get_current_user
 from ..models.users_models import User
+from ..models.businesses_model import Business
+from ..models.Social_Connection_Model import SocialConnection
 from ..schemas.social_connect_request import SocialConnectRequest
 from ..database import get_db
 from ..config import N8N_WEBHOOK_BASE
+from ..config import UPLOADPOST_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -102,44 +105,279 @@ async def test_n8n_connection(
 @router.get("/status")
 async def get_social_status(
     current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)]
 ):
-    """User এর connected social media accounts দেখাও।"""
-    from ..config import UPLOADPOST_API_KEY
-
+    """
+    User এর connected social accounts status দেখাও
+    এবং social_connections table এ save/update করো
+    """
+ 
     username = str(current_user.id)
-
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            "https://api.upload-post.com/api/uploadposts/users",
-            headers={"Authorization": f"Apikey {UPLOADPOST_API_KEY}"},
-            timeout=15.0
+ 
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://api.upload-post.com/api/uploadposts/users",
+                headers={
+                    "Authorization": f"Apikey {UPLOADPOST_API_KEY}"
+                },
+                timeout=15.0
+            )
+ 
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"UploadPost connection failed: {str(e)}"
         )
-
+ 
     if response.status_code != 200:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch social status"
+            detail="Failed to fetch UploadPost users"
         )
-
-    users = response.json()
-
+ 
+    data = response.json()
+    profiles = data.get("profiles", [])
+ 
     user_profile = next(
-        (
-            u for u in users
-            if isinstance(u, dict) and u.get("username") == username
-        ),
+        (p for p in profiles if p.get("username") == username),
         None
     )
-
+ 
     if not user_profile:
         return {
             "connected": False,
             "platforms": [],
             "message": "No social accounts connected yet"
         }
-
+ 
+    social_accounts = user_profile.get("social_accounts", {})
+    connected_platforms = []
+ 
+    for platform, details in social_accounts.items():
+        if not details:
+            continue
+ 
+        # social_connections table এ check করো আছে কিনা
+        existing = db.query(SocialConnection).filter(
+            SocialConnection.user_id == current_user.id,
+            SocialConnection.platform == platform
+        ).first()
+ 
+        if existing:
+            # আগে থেকে থাকলে update করো
+            existing.account_name = details.get("display_name") or details.get("handle")
+            existing.account_id = details.get("handle")
+            existing.is_active = True
+        else:
+            # নতুন হলে insert করো
+            new_connection = SocialConnection(
+                user_id=current_user.id,
+                platform=platform,
+                account_name=details.get("display_name") or details.get("handle"),
+                account_id=details.get("handle"),
+                is_active=True,
+            )
+            db.add(new_connection)
+ 
+        connected_platforms.append({
+            "platform": platform,
+            "display_name": details.get("display_name"),
+            "handle": details.get("handle"),
+            "profile_image": details.get("social_images"),
+            "reauth_required": details.get("reauth_required", False)
+        })
+ 
+    db.commit()
+ 
     return {
-        "connected": True,
+        "connected": len(connected_platforms) > 0,
         "username": username,
-        "platforms": user_profile.get("connected_accounts", []),
+        "platforms": connected_platforms
     }
+
+
+
+
+# @router.get("/status")
+# async def get_social_status(
+#     current_user: Annotated[User, Depends(get_current_user)],
+# ):
+#     """
+#     User এর connected social accounts status দেখাও
+#     """
+
+#     username = str(current_user.id)
+
+#     try:
+#         async with httpx.AsyncClient() as client:
+#             response = await client.get(
+#                 "https://api.upload-post.com/api/uploadposts/users",
+#                 headers={
+#                     "Authorization": f"Apikey {UPLOADPOST_API_KEY}"
+#                 },
+#                 timeout=15.0
+#             )
+
+#     except httpx.RequestError as e:
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail=f"UploadPost connection failed: {str(e)}"
+#         )
+
+#     if response.status_code != 200:
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail="Failed to fetch UploadPost users"
+#         )
+
+#     data = response.json()
+
+#     profiles = data.get("profiles", [])
+
+#     user_profile = next(
+#         (
+#             profile for profile in profiles
+#             if profile.get("username") == username
+#         ),
+#         None
+#     )
+
+#     # profile না পেলে
+#     if not user_profile:
+#         return {
+#             "connected": False,
+#             "platforms": [],
+#             "message": "No social accounts connected yet"
+#         }
+
+#     social_accounts = user_profile.get("social_accounts", {})
+
+#     connected_platforms = []
+
+#     # TikTok empty থাকলে ignore
+#     for platform, details in social_accounts.items():
+
+#         if not details:
+#             continue
+
+#         connected_platforms.append({
+#             "platform": platform,
+#             "display_name": details.get("display_name"),
+#             "handle": details.get("handle"),
+#             "profile_image": details.get("social_images"),
+#             "reauth_required": details.get("reauth_required", False)
+#         })
+
+#     return {
+#         "connected": len(connected_platforms) > 0,
+#         "username": username,
+#         "platforms": connected_platforms
+#     }
+
+
+
+
+@router.post("/connected/trigger-schedule")
+async def trigger_schedule_after_connection(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)]
+):
+    """Social media connection শেষ হলে n8n schedule workflow trigger করো"""
+ 
+    # Business info নাও
+    business = db.query(Business).filter(Business.user_id == current_user.id).first()
+    if not business:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Business profile not found"
+        )
+ 
+    username = str(current_user.id)
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://api.upload-post.com/api/uploadposts/users",
+                headers={"Authorization": f"Apikey {UPLOADPOST_API_KEY}"},
+                timeout=15.0
+            )
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"UploadPost connection failed: {str(e)}"
+        )
+ 
+    data = response.json()
+    profiles = data.get("profiles", [])
+    user_profile = next(
+        (p for p in profiles if p.get("username") == username), None
+    )
+ 
+    if not user_profile:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No social accounts connected yet"
+        )
+ 
+    social_accounts = user_profile.get("social_accounts", {})
+    platforms = [p for p, details in social_accounts.items() if details]
+ 
+    if not platforms:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No active social platforms found"
+        )
+ 
+    plan_map = {"starter": 2, "pro": 4, "premium": 7}
+    posts_per_week = plan_map.get(current_user.plan, 2)
+ 
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{N8N_WEBHOOK_BASE}/schedule-and-content",
+                json={
+                    "user_id": str(current_user.id),
+                    "email": current_user.email,
+                    "plan_type": current_user.plan,
+                    "posts_per_week": posts_per_week,
+                    "platforms": platforms,
+                    "trigger_reason": "social_connected",
+                    "business": {
+                        "name": business.business_name,
+                        "industry": business.industry,
+                        "location": business.location,
+                        "services": business.services,
+                        "tone": business.tone,
+                        "brand_color": business.brand_color,
+                    }
+                },
+                timeout=30.0
+            )
+ 
+        if response.status_code != 200:
+            logger.error(f"n8n trigger failed: {response.text}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to trigger n8n workflow"
+            )
+ 
+        return {
+            "status": "success",
+            "message": "Schedule generation started",
+            "plan_type": current_user.plan,
+            "posts_per_week": posts_per_week,
+            "platforms": platforms,
+        }
+ 
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="n8n timeout — try again"
+        )
+ 
+    except httpx.RequestError as e:
+        logger.error(f"n8n request error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="n8n service unavailable"
+        )
