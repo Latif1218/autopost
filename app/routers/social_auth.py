@@ -110,8 +110,8 @@ async def get_social_status(
     db: Annotated[Session, Depends(get_db)]
 ):
     """
-    User এর connected social accounts status দেখাও
-    এবং social_connections table এ save/update করো
+    Show user connected social accounts status and
+    do social_connections table save/update.
     """
  
     username = str(current_user.id)
@@ -160,19 +160,17 @@ async def get_social_status(
         if not details:
             continue
  
-        # social_connections table এ check করো আছে কিনা
+
         existing = db.query(SocialConnection).filter(
             SocialConnection.user_id == current_user.id,
             SocialConnection.platform == platform
         ).first()
  
         if existing:
-            # আগে থেকে থাকলে update করো
             existing.account_name = details.get("display_name") or details.get("handle")
             existing.account_id = details.get("handle")
             existing.is_active = True
         else:
-            # নতুন হলে insert করো
             new_connection = SocialConnection(
                 user_id=current_user.id,
                 platform=platform,
@@ -206,9 +204,8 @@ async def trigger_schedule_after_connection(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)]
 ):
-    """Social media connection শেষ হলে n8n schedule workflow trigger করো"""
+    """After completed social media connection start n8n schedule workflow trigger"""
  
-    # Business info নাও
     business = db.query(Business).filter(Business.user_id == current_user.id).first()
     if not business:
         raise HTTPException(
@@ -312,7 +309,7 @@ async def trigger_schedule_after_connection(
 @router.get("/posts/due-now")
 async def get_due_posts(db: Session = Depends(get_db)):
     """
-    n8n এর জন্য — এখন publish করার সময় হয়েছে এমন posts দাও
+    give which post is ready to publish at this time for n8n
     scheduled_at <= now AND status = 'pending'
     """
     now = datetime.now(timezone.utc)
@@ -328,8 +325,8 @@ async def get_due_posts(db: Session = Depends(get_db)):
             "post_id": str(post.id),
             "user_id": str(post.user_id),
             "content": post.content,
-            "image_urls": post.media_urls,      # JSON array
-            "platforms": post.platform,          # JSON array
+            "image_urls": post.media_urls,     
+            "platforms": post.platform,        
         })
 
     return {"posts": result, "total": len(result)}
@@ -342,7 +339,7 @@ async def mark_post_published(
     db: Session = Depends(get_db)
 ):
     """
-    n8n post করার পরে status update করবে
+    After posting, update the status
     """
     post = db.query(GeneratedPost).filter(
         GeneratedPost.id == post_id
