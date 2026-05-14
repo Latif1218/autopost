@@ -105,7 +105,8 @@ def get_me(
         "full_name": current_user.full_name,
         "plan": current_user.plan,
         "role": current_user.role,
-        "is_verified": current_user.is_verified
+        "is_verified": current_user.is_verified,
+        "is_onboarding": current_user.is_onboarding
     }
 
 

@@ -49,6 +49,9 @@ def onboarding_business(
         tone=payload.tone,
         brand_color=payload.brand_color
     )
+    
+    current_user.is_onboarding = True
+
     db.add(business)
     db.commit()
     db.refresh(business)

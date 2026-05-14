@@ -20,6 +20,5 @@ class GeneratedPost(Base):
     published_at = Column(DateTime(timezone=True), nullable=True)
     queue_id = Column(UUID(as_uuid=True), ForeignKey("scheduled_post_queue.id"), nullable=True)
 
-    # Relationships
     user = relationship("User", back_populates="generated_posts")
     queue = relationship("ScheduledPostQueue", back_populates="generated_posts")

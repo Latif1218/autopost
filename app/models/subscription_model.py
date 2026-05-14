@@ -1,5 +1,3 @@
-# app/models/subscription_model.py
-
 from sqlalchemy import Column, String, Enum, DateTime, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime

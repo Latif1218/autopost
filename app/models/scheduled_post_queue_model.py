@@ -23,6 +23,5 @@ class ScheduledPostQueue(Base):
     generation_status = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=True)
 
-    # Relationships
     user = relationship("User", back_populates="scheduled_post_queues")
     generated_posts = relationship("GeneratedPost", back_populates="queue")

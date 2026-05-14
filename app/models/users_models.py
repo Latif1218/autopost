@@ -42,7 +42,7 @@ class User(Base):
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))
     updated_at = Column(DateTime(timezone=True), onupdate=datetime.utcnow, nullable=True)
     is_verified = Column(Boolean, default=False, nullable=False)
-    
+    is_onboarding = Column(Boolean, default=False)
 
     businesses = relationship("Business", back_populates="user")
     subscription = relationship("Subscription", back_populates="user", uselist=False)
