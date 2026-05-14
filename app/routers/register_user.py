@@ -17,14 +17,12 @@ router = APIRouter(
 @router.post("/", status_code=status.HTTP_201_CREATED)
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
 
-    # ১. Email format check
     if not re.match(EMAIL_REGEX, user.email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid email format"
         )
 
-    # ২. Local DB তে আছে কিনা check
     existing = db.query(User).filter(User.email == user.email).first()
     if existing:
         raise HTTPException(
@@ -32,7 +30,6 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
             detail="Email already registered"
         )
 
-    # ৩. Supabase এ check
     try:
         existing_supabase = supabase_admin.auth.admin.list_users()
         for u in existing_supabase:
@@ -46,7 +43,6 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
     except Exception:
         pass
 
-    # ৪. sign_up দিয়ে user বানাও — automatically email পাঠাবে ✅
     try:
         result = supabase_anon.auth.sign_up({
             "email": user.email,
@@ -72,7 +68,6 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
             detail=f"Registration failed: {str(e)}"
         )
 
-    # ৫. Local DB তে save করো
     try:
         stmt = insert(User).values(
             supabase_uid=str(supabase_user.id),

@@ -65,7 +65,9 @@ def do_login(email: str, password: str, db: Session):
     }
 
 
-# ✅ Swagger Authorize button এর জন্য (Form Data)
+
+
+
 @router.post("/token", status_code=status.HTTP_200_OK)
 def login_form(
     request: Request,
@@ -75,7 +77,9 @@ def login_form(
     return do_login(form_data.username, form_data.password, db)
 
 
-# ✅ Frontend / API call এর জন্য (JSON)
+
+
+
 @router.post("/login", status_code=status.HTTP_200_OK)
 @limiter.limit("10/minute")
 def login_json(
@@ -86,6 +90,11 @@ def login_json(
     return do_login(credentials.email, credentials.password, db)
 
 
+
+
+
+
+
 @router.post("/logout")
 def logout():
     try:
@@ -93,6 +102,12 @@ def logout():
     except Exception:
         pass
     return {"message": "Logged out successfully"}
+
+
+
+
+
+
 
 
 @router.get("/me")
@@ -110,6 +125,12 @@ def get_me(
     }
 
 
+
+
+
+
+
+
 @router.get("/auth/callback")
 def auth_callback(
     access_token: str = None,
@@ -118,9 +139,8 @@ def auth_callback(
     expires_in: int = None
 ):
     if type == "signup":
-        # ✅ Email verified — login page এ redirect করো
-        return {"message": "✅ Email verified successfully! You can now login."}
+        return {"message": "Email verified successfully! You can now login."}
     elif type == "recovery":
-        return {"message": "✅ Password reset verified!"}
+        return {"message": "Password reset verified!"}
     else:
-        return {"message": "✅ Authentication successful!"}
+        return {"message": "Authentication successful!"}
