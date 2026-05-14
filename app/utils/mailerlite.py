@@ -72,7 +72,7 @@ async def add_to_ottomax_customers(
             )
 
             if response.status_code in [200, 201]:
-                logger.info(f"✅ MailerLite: {email} added to Ottomax Customers | Plan: {plan}")
+                logger.info(f"MailerLite: {email} added to Ottomax Customers | Plan: {plan}")
                 return True
             else:
                 logger.error(f"MailerLite subscriber add failed: {response.text}")

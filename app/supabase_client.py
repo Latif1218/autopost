@@ -21,4 +21,4 @@ supabase_admin: Client = create_client(
     options=ClientOptions(auto_refresh_token=False, persist_session=False)
 )
 
-print("✅ Supabase clients initialized successfully (Service Role + Anon)")
+print("Supabase clients initialized successfully (Service Role + Anon)")
