@@ -37,9 +37,6 @@ router = APIRouter(
 )
 
 
-# ──────────────────────────────────────────────
-# Helper — n8n trigger (non-critical)
-# ──────────────────────────────────────────────
 async def trigger_n8n_welcome(
     email: str,
     plan: str,
@@ -61,9 +58,8 @@ async def trigger_n8n_welcome(
         logger.warning(f"n8n trigger failed (non-critical): {e}")
 
 
-# ──────────────────────────────────────────────
-# GET /subscription/config
-# ──────────────────────────────────────────────
+
+
 @router.get("/config")
 async def get_payment_config():
     return {
@@ -96,9 +92,8 @@ async def get_payment_config():
     }
 
 
-# ──────────────────────────────────────────────
-# GET /subscription/status
-# ──────────────────────────────────────────────
+
+
 @router.get("/status", response_model=SubscriptionStatusResponse)
 def get_subscription_status(
     current_user: Annotated[User, Depends(get_current_user)],
@@ -126,9 +121,9 @@ def get_subscription_status(
     )
 
 
-# ──────────────────────────────────────────────
-# POST /subscription/checkout
-# ──────────────────────────────────────────────
+
+
+
 @router.post("/checkout", response_model=CheckoutResponse)
 async def create_checkout_session(
     req: CreateCheckoutRequest,
@@ -208,9 +203,11 @@ async def create_checkout_session(
     )
 
 
-# ──────────────────────────────────────────────
-# POST /subscription/webhook
-# ──────────────────────────────────────────────
+
+
+
+
+
 @router.post("/webhook")
 async def stripe_webhook(
     request: Request,
@@ -253,7 +250,6 @@ async def stripe_webhook(
             logger.warning("Webhook missing metadata")
             return {"status": "ignored"}
 
-        # ✅ Bug fix: UUID type cast করো
         from uuid import UUID
         try:
             user_uuid = UUID(user_id)
@@ -269,11 +265,9 @@ async def stripe_webhook(
             logger.error(f"User not found: {user_id}")
             return {"status": "user not found"}
 
-        # 1. User plan update
         local_user.plan = UserPlan(plan)
         local_user.updated_at = datetime.utcnow()
 
-        # 2. Subscription update
         sub = db.query(Subscription).filter(
             Subscription.user_id == local_user.id
         ).first()
@@ -296,8 +290,6 @@ async def stripe_webhook(
             sub.status = SubscriptionStatus.ACTIVE
             sub.updated_at = datetime.utcnow()
 
-        # 3. Supabase metadata update
-        # ✅ supabase_admin সরাসরি use করছি — client already initialized
         if local_user.supabase_uid:
             try:
                 supabase_admin.auth.admin.update_user_by_id(
@@ -314,7 +306,6 @@ async def stripe_webhook(
         final_email = user_email or local_user.email
         final_name = full_name or local_user.full_name or ""
 
-        # 4. MailerLite — group এ add করো
         mailerlite_ok = await add_to_ottomax_customers(
             email=final_email,
             full_name=final_name,
@@ -323,16 +314,14 @@ async def stripe_webhook(
         if not mailerlite_ok:
             logger.warning(f"MailerLite add failed: {final_email}")
 
-        # 5. n8n trigger
         await trigger_n8n_welcome(
             email=final_email,
             plan=plan,
             full_name=final_name
         )
 
-        logger.info(f"✅ Payment complete | {final_email} | Plan: {plan}")
+        logger.info(f"Payment complete | {final_email} | Plan: {plan}")
 
-    # ── customer.subscription.deleted ──
     elif event_type == "customer.subscription.deleted":
         sub_id = event["data"]["object"]["id"]
 
@@ -361,7 +350,6 @@ async def stripe_webhook(
             db.commit()
             logger.info(f"Subscription canceled: {sub_id}")
 
-    # ── invoice.payment_failed ──
     elif event_type == "invoice.payment_failed":
         sub_id = event["data"]["object"].get("subscription")
 
@@ -375,7 +363,6 @@ async def stripe_webhook(
             db.commit()
             logger.warning(f"Payment failed — past_due: {sub_id}")
 
-    # ── invoice.payment_succeeded ──
     elif event_type == "invoice.payment_succeeded":
         sub_id = event["data"]["object"].get("subscription")
 
