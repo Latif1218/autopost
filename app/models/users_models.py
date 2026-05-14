@@ -46,4 +46,6 @@ class User(Base):
 
     businesses = relationship("Business", back_populates="user")
     subscription = relationship("Subscription", back_populates="user", uselist=False)
+    generated_posts = relationship("GeneratedPost", back_populates="user")
     social_connections = relationship( "SocialConnection", back_populates="user", cascade="all, delete")
+    scheduled_post_queues = relationship("ScheduledPostQueue", back_populates="user")

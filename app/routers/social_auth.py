@@ -8,10 +8,12 @@ from ..authentication.users_oauth import get_current_user
 from ..models.users_models import User
 from ..models.businesses_model import Business
 from ..models.Social_Connection_Model import SocialConnection
+from ..models.generated_posts_model import GeneratedPost
 from ..schemas.social_connect_request import SocialConnectRequest
 from ..database import get_db
 from ..config import N8N_WEBHOOK_BASE
 from ..config import UPLOADPOST_API_KEY
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -199,85 +201,6 @@ async def get_social_status(
 
 
 
-# @router.get("/status")
-# async def get_social_status(
-#     current_user: Annotated[User, Depends(get_current_user)],
-# ):
-#     """
-#     User এর connected social accounts status দেখাও
-#     """
-
-#     username = str(current_user.id)
-
-#     try:
-#         async with httpx.AsyncClient() as client:
-#             response = await client.get(
-#                 "https://api.upload-post.com/api/uploadposts/users",
-#                 headers={
-#                     "Authorization": f"Apikey {UPLOADPOST_API_KEY}"
-#                 },
-#                 timeout=15.0
-#             )
-
-#     except httpx.RequestError as e:
-#         raise HTTPException(
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             detail=f"UploadPost connection failed: {str(e)}"
-#         )
-
-#     if response.status_code != 200:
-#         raise HTTPException(
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             detail="Failed to fetch UploadPost users"
-#         )
-
-#     data = response.json()
-
-#     profiles = data.get("profiles", [])
-
-#     user_profile = next(
-#         (
-#             profile for profile in profiles
-#             if profile.get("username") == username
-#         ),
-#         None
-#     )
-
-#     # profile না পেলে
-#     if not user_profile:
-#         return {
-#             "connected": False,
-#             "platforms": [],
-#             "message": "No social accounts connected yet"
-#         }
-
-#     social_accounts = user_profile.get("social_accounts", {})
-
-#     connected_platforms = []
-
-#     # TikTok empty থাকলে ignore
-#     for platform, details in social_accounts.items():
-
-#         if not details:
-#             continue
-
-#         connected_platforms.append({
-#             "platform": platform,
-#             "display_name": details.get("display_name"),
-#             "handle": details.get("handle"),
-#             "profile_image": details.get("social_images"),
-#             "reauth_required": details.get("reauth_required", False)
-#         })
-
-#     return {
-#         "connected": len(connected_platforms) > 0,
-#         "username": username,
-#         "platforms": connected_platforms
-#     }
-
-
-
-
 @router.post("/connected/trigger-schedule")
 async def trigger_schedule_after_connection(
     current_user: Annotated[User, Depends(get_current_user)],
@@ -381,3 +304,55 @@ async def trigger_schedule_after_connection(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="n8n service unavailable"
         )
+    
+
+
+
+
+@router.get("/posts/due-now")
+async def get_due_posts(db: Session = Depends(get_db)):
+    """
+    n8n এর জন্য — এখন publish করার সময় হয়েছে এমন posts দাও
+    scheduled_at <= now AND status = 'pending'
+    """
+    now = datetime.now(timezone.utc)
+
+    due_posts = db.query(GeneratedPost).filter(
+        GeneratedPost.status == "pending",
+        GeneratedPost.scheduled_at <= now
+    ).all()
+
+    result = []
+    for post in due_posts:
+        result.append({
+            "post_id": str(post.id),
+            "user_id": str(post.user_id),
+            "content": post.content,
+            "image_urls": post.media_urls,      # JSON array
+            "platforms": post.platform,          # JSON array
+        })
+
+    return {"posts": result, "total": len(result)}
+
+
+
+@router.patch("/posts/{post_id}/mark-published")
+async def mark_post_published(
+    post_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    n8n post করার পরে status update করবে
+    """
+    post = db.query(GeneratedPost).filter(
+        GeneratedPost.id == post_id
+    ).first()
+
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    post.status = "published"
+    post.published_at = datetime.now(timezone.utc)
+    db.commit()
+
+    return {"success": True, "post_id": post_id}
