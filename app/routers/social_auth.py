@@ -306,6 +306,116 @@ async def trigger_schedule_after_connection(
 
 
 
+@router.post("/connected/first-post-trigger")
+async def trigger_schedule_after_connection(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)]
+):
+    """After completed social media connection start n8n schedule workflow trigger"""
+ 
+    business = db.query(Business).filter(Business.user_id == current_user.id).first()
+    if not business:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Business profile not found"
+        )
+ 
+    username = str(current_user.id)
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://api.upload-post.com/api/uploadposts/users",
+                headers={"Authorization": f"Apikey {UPLOADPOST_API_KEY}"},
+                timeout=15.0
+            )
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"UploadPost connection failed: {str(e)}"
+        )
+ 
+    data = response.json()
+    profiles = data.get("profiles", [])
+    user_profile = next(
+        (p for p in profiles if p.get("username") == username), None
+    )
+ 
+    if not user_profile:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No social accounts connected yet"
+        )
+ 
+    social_accounts = user_profile.get("social_accounts", {})
+    platforms = [p for p, details in social_accounts.items() if details]
+ 
+    if not platforms:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No active social platforms found"
+        )
+ 
+    plan_map = {"starter": 2, "pro": 4, "premium": 7}
+    posts_per_week = plan_map.get(current_user.plan, 2)
+ 
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{N8N_WEBHOOK_BASE}/first-post",
+                json={
+                    "user_id": str(current_user.id),
+                    "email": current_user.email,
+                    "plan_type": current_user.plan,
+                    "posts_per_week": posts_per_week,
+                    "platforms": platforms,
+                    "trigger_reason": "social_connected",
+                    "business": {
+                        "name": business.business_name,
+                        "industry": business.industry,
+                        "location": business.location,
+                        "services": business.services,
+                        "tone": business.tone,
+                        "brand_color": business.brand_color,
+                    }
+                },
+                timeout=400.0
+            )
+ 
+        if response.status_code != 200:
+            logger.error(f"n8n trigger failed: {response.text}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to trigger n8n workflow"
+            )
+ 
+        workflow_result = response.json()
+
+        return {
+            "status": "success",
+            "message": "Schedule generation started",
+            "plan_type": current_user.plan,
+            "posts_per_week": posts_per_week,
+            "platforms": platforms,
+            "data": workflow_result
+        }
+ 
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="n8n timeout — try again"
+        )
+ 
+    except httpx.RequestError as e:
+        logger.error(f"n8n request error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="n8n service unavailable"
+        )
+    
+
+
+
+
 @router.get("/posts/due-now")
 async def get_due_posts(db: Session = Depends(get_db)):
     """
