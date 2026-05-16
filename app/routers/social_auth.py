@@ -271,7 +271,7 @@ async def trigger_schedule_after_connection(
                         "brand_color": business.brand_color,
                     }
                 },
-                timeout=30.0
+                timeout=600.0
             )
  
         if response.status_code != 200:
@@ -326,7 +326,7 @@ async def trigger_schedule_after_connection(
             response = await client.get(
                 "https://api.upload-post.com/api/uploadposts/users",
                 headers={"Authorization": f"Apikey {UPLOADPOST_API_KEY}"},
-                timeout=15.0
+                timeout=600.0
             )
     except httpx.RequestError as e:
         raise HTTPException(
@@ -378,7 +378,7 @@ async def trigger_schedule_after_connection(
                         "brand_color": business.brand_color,
                     }
                 },
-                timeout=400.0
+                timeout=600.0
             )
  
         if response.status_code != 200:
@@ -443,23 +443,23 @@ async def get_due_posts(db: Session = Depends(get_db)):
 
 
 
-@router.patch("/posts/{post_id}/mark-published")
+@router.patch("/posts/{post_id}/mark-published") 
 async def mark_post_published(
-    post_id: str,
-    db: Session = Depends(get_db)
-):
-    """
-    After posting, update the status
-    """
-    post = db.query(GeneratedPost).filter(
-        GeneratedPost.id == post_id
-    ).first()
-
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
-
-    post.status = "published"
-    post.published_at = datetime.now(timezone.utc)
-    db.commit()
-
+    post_id: str, 
+    db: Session = Depends(get_db) 
+): 
+    """ 
+    After posting, update the status 
+    """ 
+    post = db.query(GeneratedPost).filter( GeneratedPost.id == post_id ).first() 
+    if not post: 
+        raise HTTPException(
+            status_code=404, 
+            detail="Post not found"
+        ) 
+    
+    post.status = "published" 
+    post.published_at = datetime.now(timezone.utc) 
+    db.commit() 
+    
     return {"success": True, "post_id": post_id}
