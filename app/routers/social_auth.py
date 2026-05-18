@@ -1,6 +1,7 @@
 import httpx
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from typing import Annotated, Optional, List
 from pydantic import BaseModel
@@ -9,7 +10,7 @@ from ..models.users_models import User
 from ..models.businesses_model import Business
 from ..models.Social_Connection_Model import SocialConnection
 from ..models.generated_posts_model import GeneratedPost
-from ..schemas.social_connect_request import SocialConnectRequest
+from ..schemas.social_connect_request import SocialConnectRequest, GeneratedPostPendingResponse
 from ..database import get_db
 from ..config import N8N_WEBHOOK_BASE
 from ..config import UPLOADPOST_API_KEY
@@ -271,14 +272,18 @@ async def trigger_schedule_after_connection(
                         "brand_color": business.brand_color,
                     }
                 },
-                timeout=600.0
+                timeout=30.0
             )
  
-        if response.status_code != 200:
-            logger.error(f"n8n trigger failed: {response.text}")
+        if not 200 <= response.status_code < 300:
+            logger.error(f"n8n trigger failed: {response.status_code} - {response.text}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to trigger n8n workflow"
+                detail={
+                    "message": "Failed to trigger n8n workflow",
+                    "n8n_status": response.status_code,
+                    "n8n_response": response.text
+                }
             )
  
         return {
@@ -303,6 +308,78 @@ async def trigger_schedule_after_connection(
         )
     
 
+
+
+
+
+@router.get(
+    "/pending",
+    response_model=List[GeneratedPostPendingResponse],
+    status_code=status.HTTP_200_OK
+)
+async def get_pending_generated_posts(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)]
+):
+    pending_posts = (
+        db.query(GeneratedPost)
+        .filter(
+            GeneratedPost.user_id == current_user.id,
+            func.lower(GeneratedPost.status) == "pending"
+        )
+        .order_by(
+            GeneratedPost.scheduled_at.asc().nullslast(),
+            GeneratedPost.created_at.desc()
+        )
+        .all()
+    )
+
+    return pending_posts
+
+
+
+
+
+@router.post("/connected/generate-if-no-pending")
+async def generate_posts_if_no_pending(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)]
+):
+    """
+    Check pending generated posts.
+    If pending post count is 0, trigger n8n to generate new posts.
+    If pending posts already exist, skip generation.
+    """
+
+    pending_count = (
+        db.query(func.count(GeneratedPost.id))
+        .filter(
+            GeneratedPost.user_id == current_user.id,
+            func.lower(GeneratedPost.status) == "pending"
+        )
+        .scalar()
+    ) or 0
+
+    if pending_count > 0:
+        return {
+            "status": "skipped",
+            "message": "Pending posts already exist. New post generation skipped.",
+            "pending_count": pending_count,
+            "should_generate": False
+        }
+
+    trigger_result = await trigger_schedule_after_connection(
+        current_user=current_user,
+        db=db
+    )
+
+    return {
+        "status": "success",
+        "message": "No pending posts found. New post generation started.",
+        "pending_count": pending_count,
+        "should_generate": True,
+        "trigger_result": trigger_result
+    }
 
 
 
