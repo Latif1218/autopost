@@ -139,13 +139,7 @@ async def create_checkout_session(
             detail=f"Price ID not configured for plan: {plan}"
         )
 
-    if plan == "premium" and not req.is_one_time:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Premium plan is one-time payment only"
-        )
-
-    mode = "payment" if plan == "premium" else "subscription"
+    mode = "subscription"
 
     try:
         session = stripe.checkout.Session.create(
@@ -157,7 +151,7 @@ async def create_checkout_session(
                 "user_id": str(current_user.id),
                 "email": current_user.email,
                 "plan": plan,
-                "is_one_time": str(req.is_one_time),
+                "is_one_time": "False",
                 "full_name": current_user.full_name or ""
             },
             success_url=STRIPE_SUCCESS_URL,
@@ -199,7 +193,7 @@ async def create_checkout_session(
         session_id=session.id,
         url=session.url,
         plan=plan,
-        is_one_time=req.is_one_time
+        is_one_time=False
     )
 
 
