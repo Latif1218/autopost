@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  app:
+    image: mdsumon12ir/ottomaxai:latest
+
+    container_name: myapp
+
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - .env
+    restart: always
