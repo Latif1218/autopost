@@ -14,4 +14,10 @@ services:
     dns:
       - 8.8.8.8
       - 1.1.1.1
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    network_mode: bridge
+    
     restart: always
