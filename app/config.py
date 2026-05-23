@@ -23,7 +23,7 @@ STRIPE_CANCEL_URL = os.getenv("STRIPE_CANCEL_URL")
 PRICE_IDS = {
     "starter": os.getenv("PRICE_STARTER_MONTHLY"),
     "pro": os.getenv("PRICE_PRO_MONTHLY"),
-    "premium": os.getenv("PRICE_PREMIUM_ONETIME"),
+    "premium": os.getenv("PRICE_PREMIUM_MONTHLY"),
 }
 
 

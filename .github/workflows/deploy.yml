@@ -35,6 +35,10 @@ jobs:
           script: |
             cd /root/myapp
 
+            cat > .env << 'ENVEOF'
+            ${{ secrets.ENV_FILE }}
+            ENVEOF
+
             cat > docker-compose.yml << 'EOF'
             version: '3.8'
 

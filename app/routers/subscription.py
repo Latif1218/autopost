@@ -201,192 +201,6 @@ async def create_checkout_session(
 
 
 
-# @router.post("/webhook")
-# async def stripe_webhook(
-#     request: Request,
-#     db: Annotated[Session, Depends(get_db)]
-# ):
-#     payload = await request.body()
-#     sig_header = request.headers.get("stripe-signature")
- 
-#     if not STRIPE_WEBHOOK_SECRET:
-#         raise HTTPException(
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             detail="Webhook secret not configured"
-#         )
- 
-#     try:
-#         event = stripe.Webhook.construct_event(
-#             payload, sig_header, STRIPE_WEBHOOK_SECRET
-#         )
-#     except stripe.error.SignatureVerificationError:
-#         logger.error("Invalid Stripe signature")
-#         raise HTTPException(status_code=400, detail="Invalid signature")
-#     except ValueError:
-#         raise HTTPException(status_code=400, detail="Invalid payload")
- 
-#     event_type = event["type"]
-#     logger.info(f"Stripe event: {event_type}")
- 
-#     # ── checkout.session.completed ──
-#     if event_type == "checkout.session.completed":
-#         session_data = event["data"]["object"]
- 
-#         user_id = session_data["metadata"].get("user_id")
-#         plan = session_data["metadata"].get("plan")
-#         full_name = session_data["metadata"].get("full_name", "")
-#         customer_id = session_data.get("customer")
-#         subscription_id = session_data.get("subscription")
-#         user_email = session_data.get("customer_email")
- 
-#         if not user_id or not plan:
-#             logger.warning("Webhook missing metadata")
-#             return {"status": "ignored"}
- 
-#         from uuid import UUID
-#         try:
-#             user_uuid = UUID(user_id)
-#         except ValueError:
-#             logger.error(f"Invalid user_id format: {user_id}")
-#             return {"status": "invalid user_id"}
- 
-#         local_user = db.query(User).filter(
-#             User.id == user_uuid
-#         ).first()
- 
-#         if not local_user:
-#             logger.error(f"User not found: {user_id}")
-#             return {"status": "user not found"}
- 
-#         local_user.plan = UserPlan(plan)
-#         local_user.updated_at = datetime.utcnow()
- 
-#         sub = db.query(Subscription).filter(
-#             Subscription.user_id == local_user.id
-#         ).first()
- 
-#         if not sub:
-#             sub = Subscription(
-#                 user_id=local_user.id,
-#                 stripe_customer_id=customer_id,
-#                 stripe_subscription_id=subscription_id,
-#                 plan_type=PlanType(plan),
-#                 status=SubscriptionStatus.ACTIVE,
-#                 created_at=datetime.utcnow(),
-#                 updated_at=datetime.utcnow()
-#             )
-#             db.add(sub)
-#         else:
-#             sub.stripe_customer_id = customer_id
-#             sub.stripe_subscription_id = subscription_id
-#             sub.plan_type = PlanType(plan)
-#             sub.status = SubscriptionStatus.ACTIVE
-#             sub.updated_at = datetime.utcnow()
- 
-#         if local_user.supabase_uid:
-#             try:
-#                 supabase_admin.auth.admin.update_user_by_id(
-#                     local_user.supabase_uid,
-#                     {"user_metadata": {"plan": plan}}
-#                 )
-#                 logger.info(f"Supabase metadata updated: {local_user.email}")
-#             except Exception as e:
-#                 logger.warning(f"Supabase metadata update failed (non-critical): {e}")
- 
-#         db.commit()
-#         db.refresh(sub)
- 
-#         final_email = user_email or local_user.email
-#         final_name = full_name or local_user.full_name or ""
- 
-#         # ✅ Resend — Audience-এ add করো, Workflow trigger হবে
-#         resend_ok = await add_to_ottomax_customers(
-#             email=final_email,
-#             full_name=final_name,
-#             plan=plan
-#         )
-#         if not resend_ok:
-#             logger.warning(f"Resend add failed: {final_email}")
- 
-#         await trigger_n8n_welcome(
-#             email=final_email,
-#             plan=plan,
-#             full_name=final_name
-#         )
- 
-#         logger.info(f"Payment complete | {final_email} | Plan: {plan}")
- 
-#     # ── customer.subscription.deleted ──
-#     elif event_type == "customer.subscription.deleted":
-#         sub_id = event["data"]["object"]["id"]
- 
-#         sub = db.query(Subscription).filter(
-#             Subscription.stripe_subscription_id == sub_id
-#         ).first()
- 
-#         if sub:
-#             sub.status = SubscriptionStatus.CANCELED
-#             sub.updated_at = datetime.utcnow()
- 
-#             user = db.query(User).filter(User.id == sub.user_id).first()
-#             if user:
-#                 user.plan = UserPlan.ESSENTIAL
-#                 user.updated_at = datetime.utcnow()
- 
-#                 if user.supabase_uid:
-#                     try:
-#                         supabase_admin.auth.admin.update_user_by_id(
-#                             user.supabase_uid,
-#                             {"user_metadata": {"plan": "essential"}}
-#                         )
-#                     except Exception as e:
-#                         logger.warning(f"Supabase downgrade failed: {e}")
- 
-#             db.commit()
-#             logger.info(f"Subscription canceled: {sub_id}")
- 
-#     # ── invoice.payment_failed ──
-#     elif event_type == "invoice.payment_failed":
-#         sub_id = event["data"]["object"].get("subscription")
- 
-#         sub = db.query(Subscription).filter(
-#             Subscription.stripe_subscription_id == sub_id
-#         ).first()
- 
-#         if sub:
-#             sub.status = SubscriptionStatus.PAST_DUE
-#             sub.updated_at = datetime.utcnow()
-#             db.commit()
-#             logger.warning(f"Payment failed — past_due: {sub_id}")
- 
-#     # ── invoice.payment_succeeded ──
-#     elif event_type == "invoice.payment_succeeded":
-#         sub_id = event["data"]["object"].get("subscription")
- 
-#         sub = db.query(Subscription).filter(
-#             Subscription.stripe_subscription_id == sub_id
-#         ).first()
- 
-#         if sub:
-#             sub.status = SubscriptionStatus.ACTIVE
-#             sub.updated_at = datetime.utcnow()
-#             db.commit()
-#             logger.info(f"Subscription renewed: {sub_id}")
- 
-#     return {"status": "success"}
-
-
-
-
-
-
-
-
-
-
-
-
-
 @router.post("/webhook")
 async def stripe_webhook(
     request: Request,
@@ -394,94 +208,280 @@ async def stripe_webhook(
 ):
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature")
-
+ 
     if not STRIPE_WEBHOOK_SECRET:
-        logger.error("Webhook secret not configured")
-        raise HTTPException(status_code=500, detail="Webhook secret missing")
-
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Webhook secret not configured"
+        )
+ 
     try:
         event = stripe.Webhook.construct_event(
             payload, sig_header, STRIPE_WEBHOOK_SECRET
         )
-    except stripe.error.SignatureVerificationError as e:
-        logger.error(f"Invalid signature: {e}")
+    except stripe.error.SignatureVerificationError:
+        logger.error("Invalid Stripe signature")
         raise HTTPException(status_code=400, detail="Invalid signature")
-    except Exception as e:
-        logger.error(f"Webhook payload error: {e}")
+    except ValueError:
         raise HTTPException(status_code=400, detail="Invalid payload")
-
+ 
     event_type = event["type"]
-    logger.info(f"Received Stripe event: {event_type}")
-
-    try:
-        if event_type == "checkout.session.completed":
-            session = event["data"]["object"]
-
-            user_id = session.get("metadata", {}).get("user_id")
-            plan = session.get("metadata", {}).get("plan")
-            customer_id = session.get("customer")
-            subscription_id = session.get("subscription")
-
-            if not user_id or not plan:
-                logger.warning("Missing user_id or plan in metadata")
-                return {"status": "ignored"}
-
-            # UUID validation
+    logger.info(f"Stripe event: {event_type}")
+ 
+    # ── checkout.session.completed ──
+    if event_type == "checkout.session.completed":
+        session_data = event["data"]["object"]
+ 
+        user_id = session_data["metadata"].get("user_id")
+        plan = session_data["metadata"].get("plan")
+        full_name = session_data["metadata"].get("full_name", "")
+        customer_id = session_data.get("customer")
+        subscription_id = session_data.get("subscription")
+        user_email = session_data.get("customer_email")
+ 
+        if not user_id or not plan:
+            logger.warning("Webhook missing metadata")
+            return {"status": "ignored"}
+ 
+        from uuid import UUID
+        try:
+            user_uuid = UUID(user_id)
+        except ValueError:
+            logger.error(f"Invalid user_id format: {user_id}")
+            return {"status": "invalid user_id"}
+ 
+        local_user = db.query(User).filter(
+            User.id == user_uuid
+        ).first()
+ 
+        if not local_user:
+            logger.error(f"User not found: {user_id}")
+            return {"status": "user not found"}
+ 
+        local_user.plan = UserPlan(plan)
+        local_user.updated_at = datetime.utcnow()
+ 
+        sub = db.query(Subscription).filter(
+            Subscription.user_id == local_user.id
+        ).first()
+ 
+        if not sub:
+            sub = Subscription(
+                user_id=local_user.id,
+                stripe_customer_id=customer_id,
+                stripe_subscription_id=subscription_id,
+                plan_type=PlanType(plan),
+                status=SubscriptionStatus.ACTIVE,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            db.add(sub)
+        else:
+            sub.stripe_customer_id = customer_id
+            sub.stripe_subscription_id = subscription_id
+            sub.plan_type = PlanType(plan)
+            sub.status = SubscriptionStatus.ACTIVE
+            sub.updated_at = datetime.utcnow()
+ 
+        if local_user.supabase_uid:
             try:
-                user_uuid = UUID(user_id)
-            except ValueError:
-                logger.error(f"Invalid user_id: {user_id}")
-                return {"status": "invalid_user_id"}
-
-            user = db.query(User).filter(User.id == user_uuid).first()
-            if not user:
-                logger.error(f"User not found: {user_id}")
-                return {"status": "user_not_found"}
-
-            # === আপডেট শুরু ===
-            user.plan = UserPlan(plan)
-            user.updated_at = datetime.utcnow()
-
-            sub = db.query(Subscription).filter(
-                Subscription.user_id == user.id
-            ).first()
-
-            if not sub:
-                sub = Subscription(
-                    user_id=user.id,
-                    stripe_customer_id=customer_id,
-                    stripe_subscription_id=subscription_id,
-                    plan_type=PlanType(plan),
-                    status=SubscriptionStatus.ACTIVE,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow()
+                supabase_admin.auth.admin.update_user_by_id(
+                    local_user.supabase_uid,
+                    {"user_metadata": {"plan": plan}}
                 )
-                db.add(sub)
-            else:
-                sub.stripe_customer_id = customer_id
-                sub.stripe_subscription_id = subscription_id
-                sub.plan_type = PlanType(plan)
-                sub.status = SubscriptionStatus.ACTIVE
-                sub.updated_at = datetime.utcnow()
-
-            db.commit()
-            db.refresh(sub)
-
-            logger.info(f"✅ SUCCESS: User {user.email} upgraded to {plan}")
-
-            # Resend + n8n call (এগুলো exception হলে মেইন লজিক ভাঙবে না)
-            try:
-                await add_to_ottomax_customers(...)
-                await trigger_n8n_welcome(...)
+                logger.info(f"Supabase metadata updated: {local_user.email}")
             except Exception as e:
-                logger.warning(f"Post-processing failed: {e}")
-
-        # অন্যান্য events (আগের মতোই রাখতে পারো)
-
-    except Exception as e:
-        logger.error(f"Error processing event {event_type}: {e}", exc_info=True)
-        # এখানে db.rollback() করা ভালো হবে যদি transaction open থাকে
-        db.rollback()
-        raise HTTPException(status_code=500, detail="Internal processing error")
-
+                logger.warning(f"Supabase metadata update failed (non-critical): {e}")
+ 
+        db.commit()
+        db.refresh(sub)
+ 
+        final_email = user_email or local_user.email
+        final_name = full_name or local_user.full_name or ""
+ 
+        # ✅ Resend — Audience-এ add করো, Workflow trigger হবে
+        resend_ok = await add_to_ottomax_customers(
+            email=final_email,
+            full_name=final_name,
+            plan=plan
+        )
+        if not resend_ok:
+            logger.warning(f"Resend add failed: {final_email}")
+ 
+        await trigger_n8n_welcome(
+            email=final_email,
+            plan=plan,
+            full_name=final_name
+        )
+ 
+        logger.info(f"Payment complete | {final_email} | Plan: {plan}")
+ 
+    # ── customer.subscription.deleted ──
+    elif event_type == "customer.subscription.deleted":
+        sub_id = event["data"]["object"]["id"]
+ 
+        sub = db.query(Subscription).filter(
+            Subscription.stripe_subscription_id == sub_id
+        ).first()
+ 
+        if sub:
+            sub.status = SubscriptionStatus.CANCELED
+            sub.updated_at = datetime.utcnow()
+ 
+            user = db.query(User).filter(User.id == sub.user_id).first()
+            if user:
+                user.plan = UserPlan.ESSENTIAL
+                user.updated_at = datetime.utcnow()
+ 
+                if user.supabase_uid:
+                    try:
+                        supabase_admin.auth.admin.update_user_by_id(
+                            user.supabase_uid,
+                            {"user_metadata": {"plan": "essential"}}
+                        )
+                    except Exception as e:
+                        logger.warning(f"Supabase downgrade failed: {e}")
+ 
+            db.commit()
+            logger.info(f"Subscription canceled: {sub_id}")
+ 
+    # ── invoice.payment_failed ──
+    elif event_type == "invoice.payment_failed":
+        sub_id = event["data"]["object"].get("subscription")
+ 
+        sub = db.query(Subscription).filter(
+            Subscription.stripe_subscription_id == sub_id
+        ).first()
+ 
+        if sub:
+            sub.status = SubscriptionStatus.PAST_DUE
+            sub.updated_at = datetime.utcnow()
+            db.commit()
+            logger.warning(f"Payment failed — past_due: {sub_id}")
+ 
+    # ── invoice.payment_succeeded ──
+    elif event_type == "invoice.payment_succeeded":
+        sub_id = event["data"]["object"].get("subscription")
+ 
+        sub = db.query(Subscription).filter(
+            Subscription.stripe_subscription_id == sub_id
+        ).first()
+ 
+        if sub:
+            sub.status = SubscriptionStatus.ACTIVE
+            sub.updated_at = datetime.utcnow()
+            db.commit()
+            logger.info(f"Subscription renewed: {sub_id}")
+ 
     return {"status": "success"}
+
+
+
+
+
+
+
+
+
+
+
+
+
+# @router.post("/webhook")
+# async def stripe_webhook(
+#     request: Request,
+#     db: Annotated[Session, Depends(get_db)]
+# ):
+#     payload = await request.body()
+#     sig_header = request.headers.get("stripe-signature")
+
+#     if not STRIPE_WEBHOOK_SECRET:
+#         logger.error("Webhook secret not configured")
+#         raise HTTPException(status_code=500, detail="Webhook secret missing")
+
+#     try:
+#         event = stripe.Webhook.construct_event(
+#             payload, sig_header, STRIPE_WEBHOOK_SECRET
+#         )
+#     except stripe.error.SignatureVerificationError as e:
+#         logger.error(f"Invalid signature: {e}")
+#         raise HTTPException(status_code=400, detail="Invalid signature")
+#     except Exception as e:
+#         logger.error(f"Webhook payload error: {e}")
+#         raise HTTPException(status_code=400, detail="Invalid payload")
+
+#     event_type = event["type"]
+#     logger.info(f"Received Stripe event: {event_type}")
+
+#     try:
+#         if event_type == "checkout.session.completed":
+#             session = event["data"]["object"]
+
+#             user_id = session.get("metadata", {}).get("user_id")
+#             plan = session.get("metadata", {}).get("plan")
+#             customer_id = session.get("customer")
+#             subscription_id = session.get("subscription")
+
+#             if not user_id or not plan:
+#                 logger.warning("Missing user_id or plan in metadata")
+#                 return {"status": "ignored"}
+
+#             # UUID validation
+#             try:
+#                 user_uuid = UUID(user_id)
+#             except ValueError:
+#                 logger.error(f"Invalid user_id: {user_id}")
+#                 return {"status": "invalid_user_id"}
+
+#             user = db.query(User).filter(User.id == user_uuid).first()
+#             if not user:
+#                 logger.error(f"User not found: {user_id}")
+#                 return {"status": "user_not_found"}
+
+#             # === আপডেট শুরু ===
+#             user.plan = UserPlan(plan)
+#             user.updated_at = datetime.utcnow()
+
+#             sub = db.query(Subscription).filter(
+#                 Subscription.user_id == user.id
+#             ).first()
+
+#             if not sub:
+#                 sub = Subscription(
+#                     user_id=user.id,
+#                     stripe_customer_id=customer_id,
+#                     stripe_subscription_id=subscription_id,
+#                     plan_type=PlanType(plan),
+#                     status=SubscriptionStatus.ACTIVE,
+#                     created_at=datetime.utcnow(),
+#                     updated_at=datetime.utcnow()
+#                 )
+#                 db.add(sub)
+#             else:
+#                 sub.stripe_customer_id = customer_id
+#                 sub.stripe_subscription_id = subscription_id
+#                 sub.plan_type = PlanType(plan)
+#                 sub.status = SubscriptionStatus.ACTIVE
+#                 sub.updated_at = datetime.utcnow()
+
+#             db.commit()
+#             db.refresh(sub)
+
+#             logger.info(f"✅ SUCCESS: User {user.email} upgraded to {plan}")
+
+#             # Resend + n8n call (এগুলো exception হলে মেইন লজিক ভাঙবে না)
+#             try:
+#                 await add_to_ottomax_customers(...)
+#                 await trigger_n8n_welcome(...)
+#             except Exception as e:
+#                 logger.warning(f"Post-processing failed: {e}")
+
+#         # অন্যান্য events (আগের মতোই রাখতে পারো)
+
+#     except Exception as e:
+#         logger.error(f"Error processing event {event_type}: {e}", exc_info=True)
+#         # এখানে db.rollback() করা ভালো হবে যদি transaction open থাকে
+#         db.rollback()
+#         raise HTTPException(status_code=500, detail="Internal processing error")
+
+#     return {"status": "success"}
