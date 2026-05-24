@@ -146,6 +146,7 @@ async def create_checkout_session(
             mode=mode,
             payment_method_types=["card"],
             customer_email=current_user.email,
+            discounts=[{"coupon": "UeadTrFO"}],
             line_items=[{"price": price_id, "quantity": 1}],
             metadata={
                 "user_id": str(current_user.id),
@@ -212,7 +213,7 @@ async def stripe_webhook(
 
     print(f"Payload: {payload}")
     print(f"Signature: {sig_header}")
-    
+
     if not STRIPE_WEBHOOK_SECRET:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
