@@ -206,9 +206,13 @@ async def stripe_webhook(
     request: Request,
     db: Annotated[Session, Depends(get_db)]
 ):
+    print("Stripe webhook received")
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature")
- 
+
+    print(f"Payload: {payload}")
+    print(f"Signature: {sig_header}")
+    
     if not STRIPE_WEBHOOK_SECRET:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
