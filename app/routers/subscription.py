@@ -146,7 +146,7 @@ async def create_checkout_session(
             mode=mode,
             payment_method_types=["card"],
             customer_email=current_user.email,
-            discounts=[{"coupon": "UeadTrFO"}],
+            discounts=[{"coupon": "NEW_USER_2026"}],
             line_items=[{"price": price_id, "quantity": 1}],
             metadata={
                 "user_id": str(current_user.id),
