@@ -23,15 +23,106 @@ router = APIRouter(
     tags=["Social Media"]
 )
 
+# @router.post("/connect/test")
+# async def test_n8n_connection(
+#     req: SocialConnectRequest,
+#     current_user: Annotated[User, Depends(get_current_user)],
+#     db: Annotated[Session, Depends(get_db)]
+# ):
+#     """Test social media connection via n8n"""
+
+#     allowed_platforms = ["facebook", "instagram", "google_business"]
+#     for p in req.platforms:
+#         if p not in allowed_platforms:
+#             raise HTTPException(
+#                 status_code=status.HTTP_400_BAD_REQUEST,
+#                 detail=f"Invalid platform: {p}. Allowed: {allowed_platforms}"
+#             )
+
+#     try:
+#         async with httpx.AsyncClient() as client:
+#             response = await client.post(
+#                 f"{N8N_WEBHOOK_BASE}/social-connect-setup",
+#                 json={
+#                     "username": str(current_user.id),
+#                     "platforms": req.platforms,
+#                     "redirect_url": req.redirect_url,
+#                     "user_email": current_user.email,
+#                     "user_plan": current_user.plan
+#                 },
+#                 timeout=30.0
+#             )
+
+#         if response.status_code != 200:
+#             logger.error(f"n8n social connect failed: {response.text}")
+#             raise HTTPException(
+#                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#                 detail="Failed to generate social connect URL"
+#             )
+        
+#         data = response.json()
+#         if not data or not isinstance(data, list):
+#             raise HTTPException(
+#                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#                 detail="Invalid response from n8n"
+#             )
+        
+#         result = data[0]
+
+#         connect_url = result.get("access_url")
+
+#         if not connect_url:
+#             raise HTTPException(
+#                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#                 detail="No connect URL returned"
+#             )
+
+#         return {
+#             "n8n_status": response.status_code,
+#             "status": "success",
+#             "message": "Social connect request received and forwarded to n8n",
+#             "success": result.get("success", False),
+#             "connect_url": connect_url,
+#             "duration": result.get("duration"),
+#             "platforms_requested": req.platforms,
+#             "message": "Redirect user to connect_url"
+#         }
+        
+
+#     except httpx.TimeoutException:
+#         raise HTTPException(
+#             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+#             detail="n8n timeout — try again"
+#         )
+    
+#     except httpx.RequestError as e:
+#         logger.error(f"n8n request error: {e}")
+#         raise HTTPException(
+#             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+#             detail="n8n service unavailable"
+#         )
+
+
+import httpx
+import logging
+from fastapi import HTTPException, status, Depends
+from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
+from typing import Annotated
+
+logger = logging.getLogger(__name__)
+
 @router.post("/connect/test")
 async def test_n8n_connection(
     req: SocialConnectRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)]
 ):
-    """Test social media connection via n8n"""
+    """Test social media connection via n8n (DEBUG VERSION)"""
 
     allowed_platforms = ["facebook", "instagram", "google_business"]
+
+    # validate platforms
     for p in req.platforms:
         if p not in allowed_platforms:
             raise HTTPException(
@@ -40,70 +131,131 @@ async def test_n8n_connection(
             )
 
     try:
+        payload = {
+            "username": str(current_user.id),
+            "platforms": req.platforms,
+            "redirect_url": req.redirect_url,
+            "user_email": current_user.email,
+            "user_plan": current_user.plan
+        }
+
+        logger.info(f"➡️ Sending payload to n8n: {payload}")
+
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{N8N_WEBHOOK_BASE}/social-connect-setup",
-                json={
-                    "username": str(current_user.id),
-                    "platforms": req.platforms,
-                    "redirect_url": req.redirect_url,
-                    "user_email": current_user.email,
-                    "user_plan": current_user.plan
-                },
+                json=payload,
                 timeout=30.0
             )
 
+        logger.info(f"⬅️ N8N status: {response.status_code}")
+        logger.info(f"⬅️ N8N raw response: {response.text}")
+
+        # ❌ handle non-200 response
         if response.status_code != 200:
-            logger.error(f"n8n social connect failed: {response.text}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to generate social connect URL"
+            logger.error(f"❌ n8n failed: {response.text}")
+
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": "Failed to generate social connect URL",
+                    "n8n_status": response.status_code,
+                    "n8n_response": response.text,
+                    "debug_payload": payload
+                }
             )
-        
-        data = response.json()
-        if not data or not isinstance(data, list):
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Invalid response from n8n"
+
+        # ✅ safe JSON parse
+        try:
+            data = response.json()
+        except Exception as e:
+            logger.error(f"❌ Invalid JSON from n8n: {response.text}")
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": "Invalid JSON response from n8n",
+                    "error": str(e),
+                    "raw_response": response.text
+                }
             )
-        
-        result = data[0]
+
+        # validate response structure
+        if not data:
+            raise HTTPException(
+                status_code=500,
+                detail="Empty response from n8n"
+            )
+
+        if isinstance(data, list):
+            result = data[0]
+        elif isinstance(data, dict):
+            result = data
+        else:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": "Unexpected n8n response format",
+                    "data_type": str(type(data)),
+                    "raw_response": data
+                }
+            )
 
         connect_url = result.get("access_url")
 
         if not connect_url:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="No connect URL returned"
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": "No connect URL returned from n8n",
+                    "n8n_result": result
+                }
             )
 
+        # ✅ success response
         return {
-            "n8n_status": response.status_code,
             "status": "success",
-            "message": "Social connect request received and forwarded to n8n",
-            "success": result.get("success", False),
+            "message": "Social connect request forwarded to n8n",
             "connect_url": connect_url,
+            "success": result.get("success", False),
             "duration": result.get("duration"),
-            "platforms_requested": req.platforms,
-            "message": "Redirect user to connect_url"
+            "platforms_requested": req.platforms
         }
-        
 
     except httpx.TimeoutException:
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail="n8n timeout — try again"
+        logger.error("❌ n8n timeout")
+        return JSONResponse(
+            status_code=504,
+            content={
+                "status": "error",
+                "message": "n8n timeout — try again"
+            }
         )
-    
+
     except httpx.RequestError as e:
-        logger.error(f"n8n request error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="n8n service unavailable"
+        logger.error(f"❌ n8n request error: {str(e)}")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "error",
+                "message": "n8n service unavailable",
+                "error": str(e)
+            }
         )
 
-
-
+    except Exception as e:
+        logger.exception("❌ Unexpected error")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": "Internal server error",
+                "error": str(e)
+            }
+        )
 
 @router.get("/status")
 async def get_social_status(
