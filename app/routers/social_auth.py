@@ -702,8 +702,8 @@ async def mark_post_published(
 
 
 
-@router.patch("/posts/{post_id}/mark-data-missing") 
-async def mark_post_data_missing(
+@router.patch("/posts/{post_id}/mark-missing-url") 
+async def mark_post_missing_url(
     post_id: str, 
     db: Session = Depends(get_db) 
 ): 
@@ -717,7 +717,7 @@ async def mark_post_data_missing(
             detail="Post not found"
         ) 
     
-    post.status = "data_missing" 
+    post.status = "missing_url" 
     post.published_at = datetime.now(timezone.utc) 
     db.commit() 
     
