@@ -301,7 +301,7 @@ async def stripe_webhook(
         final_email = user_email or local_user.email
         final_name = full_name or local_user.full_name or ""
  
-        # ✅ Resend — Audience-এ add করো, Workflow trigger হবে
+        # Resend — Audience-এ add করো, Workflow trigger হবে
         resend_ok = await add_to_ottomax_customers(
             email=final_email,
             full_name=final_name,
@@ -368,23 +368,11 @@ async def stripe_webhook(
         sub = db.query(Subscription).filter(
             Subscription.stripe_subscription_id == sub_id
         ).first()
- 
+
         if sub:
             sub.status = SubscriptionStatus.ACTIVE
             sub.updated_at = datetime.utcnow()
             db.commit()
             logger.info(f"Subscription renewed: {sub_id}")
- 
+
     return {"status": "success"}
-
-
-
-
-
-
-
-
-
-
-
-

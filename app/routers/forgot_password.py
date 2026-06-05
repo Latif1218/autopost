@@ -33,7 +33,7 @@ def forgot_password(
         supabase_anon.auth.reset_password_email(
             payload.email,
             options={
-                "redirect_to": "http://localhost:8000/reset-password"
+                "redirect_to": "https://ottomaxai.com/reset-password"
             }
         )
     except Exception:
