@@ -62,6 +62,9 @@ app.add_middleware(
         "http://127.0.0.1:5501",
         "https://www.ottomaxai.com",
         "https://ottomaxai.com",
+        "https://ottomaxai.com/login",
+        "https://ottomaxai.com/forgot-password",
+        "https://ottomaxai.com/reset-password"
     ],
     allow_credentials=True,
     allow_methods=["*"],
