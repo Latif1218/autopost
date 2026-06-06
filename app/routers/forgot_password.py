@@ -24,7 +24,7 @@ limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/forgot_pass", status_code=status.HTTP_200_OK)
-@limiter.limit("3/hour")
+@limiter.limit("20/hour")
 def forgot_password(
     request: Request,
     payload: ForgotPasswoedRequest
